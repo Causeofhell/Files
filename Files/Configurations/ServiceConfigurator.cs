@@ -16,6 +16,7 @@ public static class ServiceConfigurator
     {
         services.AddSingleton<IConfiguration>(configuration);
 
+        // Register Logger as ILog with dependency on IConfiguration
         services.AddSingleton<ILog, Logger>();
         services.AddSingleton<IMetadataExtractor, MetadataExtractor>();
         services.AddSingleton<IFileService, FileService>();
@@ -29,7 +30,5 @@ public static class ServiceConfigurator
             var fileExtension = configuration.GetValue<string>("FileProcessorSettings:FileExtension");
             return new FileProcessor(logger, metadataExtractor, fileService, directoryPath, fileExtension);
         });
-
-        // Add other services and configurations as needed
     }
 }

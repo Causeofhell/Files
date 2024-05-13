@@ -1,22 +1,35 @@
 ﻿using Files.Interface;
+using Microsoft.Extensions.Configuration;
+using System;
+using System.IO;
 
 public class Logger : ILog
 {
-    private static readonly string logFilePath = "E:\\FilesTest\\log.txt";
+    private readonly string _logFilePath;
+
+    public Logger(IConfiguration configuration)
+    {
+        // Read the directory path from the configuration
+        string directoryPath = configuration.GetValue<string>("FileProcessorSettings:DirectoryPath");
+        _logFilePath = Path.Combine(directoryPath, "log.txt");
+
+        // Ensure the directory exists
+        Directory.CreateDirectory(directoryPath);
+    }
 
     public void Log(string message)
     {
-        // Construye el mensaje completo con la fecha y hora.
+        // Build the complete message with date and time.
         string logMessage = $"{DateTime.Now}: {message}";
 
-        // Escribe el mensaje en la consola.
+        // Write the message to the console.
         Console.WriteLine(logMessage);
 
-        // Asegura que el archivo de log se escriba de forma segura incluso en entornos multi-thread.
-        lock (logFilePath)
+        // Ensure that the log file is written securely even in multi-threaded environments.
+        lock (_logFilePath)
         {
-            // Escribe el mensaje en el archivo 'log.txt'.
-            using (StreamWriter sw = new StreamWriter(logFilePath, true))
+            // Write the message to 'log.txt'.
+            using (StreamWriter sw = new StreamWriter(_logFilePath, true))
             {
                 sw.WriteLine(logMessage);
             }
