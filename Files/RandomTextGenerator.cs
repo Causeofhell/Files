@@ -3,7 +3,7 @@
 public class RandomTextGenerator
 {
     private static readonly string[] Texts = new string[] {
-        "Contratame", "Hire me", "Contratado", "Texto 4"
+        "Contratame", "Hire me", "Contratado", "Contract me"
     };
 
     public static string GenerateRandomText()
