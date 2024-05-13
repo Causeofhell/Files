@@ -1,56 +1,65 @@
-﻿using NUnit.Framework;
+﻿using Files.Interface;
 using Moq;
-using Files.Interface;
-using System.Threading.Tasks;
-using System.IO;
 
 [TestFixture]
 public class FileProcessorTests
 {
+    private Mock<IFileService> _fileServiceMock;
     private Mock<ILog> _loggerMock;
     private Mock<IMetadataExtractor> _metadataExtractorMock;
     private FileProcessor _fileProcessor;
-    private string _directoryPath = @"E:\FilesTest";
+    private string _directoryPath = "E:\\FilesTest";
     private string _fileExtension = ".mp3";
 
     [SetUp]
-    public void SetUp()
+    public void Setup()
     {
+        // Mock services
+        _fileServiceMock = new Mock<IFileService>();
         _loggerMock = new Mock<ILog>();
         _metadataExtractorMock = new Mock<IMetadataExtractor>();
-        _fileProcessor = new FileProcessor(_loggerMock.Object, _metadataExtractorMock.Object, _directoryPath, _fileExtension);
+
+        // Initialize FileProcessor
+        _fileProcessor = new FileProcessor(_loggerMock.Object, _metadataExtractorMock.Object, _fileServiceMock.Object, _directoryPath, _fileExtension);
+
+        // Setup mocks
+        _fileServiceMock.Setup(fs => fs.GetFiles(_directoryPath, "*" + _fileExtension))
+            .Returns(new string[] { "file1.mp3", "file2.mp3", "file3.mp3" });
+
+        _fileServiceMock.Setup(fs => fs.GetFileSize(It.IsAny<string>()))
+            .Returns(1024 * 1024); // 1MB
+
+        _fileServiceMock.Setup(fs => fs.ReadFileHeader(It.IsAny<string>(), 10))
+            .Returns(new byte[] { 0x49, 0x44, 0x33 }); // ID3 tags
     }
 
     [Test]
-    public async Task ProcessFilesAsync_ProcessesOnlyValidFiles()
+    public async Task ProcessFilesAsync_ValidFilesAreProcessed()
     {
         // Arrange
-        // Assuming your test environment already has a mix of valid and invalid files.
         _metadataExtractorMock.Setup(m => m.ExtractMetadataAsync(It.IsAny<string>()))
-            .ReturnsAsync("Metadata Extracted");
+            .ReturnsAsync("Metadata");
 
         // Act
         await _fileProcessor.ProcessFilesAsync();
 
         // Assert
-        _metadataExtractorMock.Verify(m => m.ExtractMetadataAsync(It.Is<string>(path => IsValidFile(path))),
-            Times.AtLeastOnce());
-        _loggerMock.Verify(l => l.Log(It.Is<string>(s => s.Contains("Processed:"))), Times.AtLeastOnce());
+        _metadataExtractorMock.Verify(m => m.ExtractMetadataAsync(It.IsAny<string>()), Times.Exactly(3));
+        _loggerMock.Verify(l => l.Log(It.Is<string>(s => s.Contains("Processed:"))), Times.Exactly(3));
     }
 
-    private bool IsValidFile(string filePath)
+    [Test]
+    public async Task ProcessFilesAsync_InvalidSize_NotProcessed()
     {
-        var fileInfo = new FileInfo(filePath);
-        if (fileInfo.Length >= 50 * 1024 && fileInfo.Length <= 8 * 1024 * 1024)
-        {
-            using (var fileStream = File.OpenRead(filePath))
-            {
-                byte[] buffer = new byte[10];
-                fileStream.Read(buffer, 0, 10);
-                return buffer[0] == 'I' && buffer[1] == 'D' && buffer[2] == '3' ||
-                       (buffer[0] == 0xFF && (buffer[1] & 0xE0) == 0xE0);
-            }
-        }
-        return false;
+        // Arrange
+        _fileServiceMock.Setup(fs => fs.GetFileSize(It.IsAny<string>()))
+            .Returns(9 * 1024 * 1024); // 9MB
+
+        // Act
+        await _fileProcessor.ProcessFilesAsync();
+
+        // Assert
+        _metadataExtractorMock.Verify(m => m.ExtractMetadataAsync(It.IsAny<string>()), Times.Never);
+        _loggerMock.Verify(l => l.Log(It.Is<string>(s => s.Contains("invalid due to inappropriate size"))), Times.AtLeastOnce());
     }
 }

@@ -1,23 +1,33 @@
 ﻿public class TaskScheduler
 {
-    private readonly TimeSpan _runTime;
-    private readonly Func<Task> _taskToRunAsync;  // Changed to Func<Task>
+    private readonly Func<Task<bool>> _taskToRunAsync;  // Assume Task returns bool indicating whether to continue
     private CancellationTokenSource _cancellationTokenSource;
 
-    public TaskScheduler(TimeSpan runTime, Func<Task> taskToRunAsync)
+    public bool ExecuteImmediately { get; set; }
+
+    public TaskScheduler(Func<Task<bool>> taskToRunAsync, bool executeImmediately = false)
     {
-        _runTime = runTime;
         _taskToRunAsync = taskToRunAsync;
         _cancellationTokenSource = new CancellationTokenSource();
+        ExecuteImmediately = executeImmediately;
     }
 
     public void Start()
     {
         Task.Run(async () =>
         {
-            // Execute the task immediately for debugging
-            await _taskToRunAsync();  // Now awaiting the task
-            await ScheduleTask(_cancellationTokenSource.Token);
+            if (ExecuteImmediately)
+            {
+                // Execute the task immediately
+                bool continueRunning = await _taskToRunAsync();
+                if (!continueRunning) return;  // Stop if no more files to process
+            }
+
+            while (!_cancellationTokenSource.IsCancellationRequested)
+            {
+                bool continueRunning = await ScheduleTask(_cancellationTokenSource.Token);
+                if (!continueRunning) break;  // Break the loop if no more files to process
+            }
         });
     }
 
@@ -26,23 +36,28 @@
         _cancellationTokenSource.Cancel();
     }
 
-    private async Task ScheduleTask(CancellationToken cancellationToken)
+    private async Task<bool> ScheduleTask(CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        try
         {
-            var now = DateTime.Now;
-            var todayMidnight = now.Date.AddDays(1); // Midnight of the next day
-            var delay = todayMidnight - now;
-
-            try
+            var delay = CalculateDelayUntilMidnight();
+            await Task.Delay(delay, cancellationToken);
+            if (!cancellationToken.IsCancellationRequested)
             {
-                await Task.Delay(delay, cancellationToken);
-                await _taskToRunAsync();  // Now awaiting the task
+                return await _taskToRunAsync();
             }
-            catch (TaskCanceledException)
-            {
-                return;  // Task was canceled
-            }
+            return false;
         }
+        catch (TaskCanceledException)
+        {
+            return false;  // Task was canceled, possibly by calling Stop
+        }
+    }
+
+    private TimeSpan CalculateDelayUntilMidnight()
+    {
+        var now = DateTime.Now;
+        var midnightToday = now.Date.AddDays(1);
+        return midnightToday - now;
     }
 }

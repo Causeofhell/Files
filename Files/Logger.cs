@@ -1,6 +1,4 @@
 ﻿using Files.Interface;
-using System;
-using System.IO;
 
 public class Logger : ILog
 {

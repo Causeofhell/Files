@@ -1,45 +1,46 @@
 ﻿using Files.Interface;
-using System;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 
 public class FileProcessor : IFileProcessor
 {
     private const int MinSize = 50 * 1024; // 50KB
     private const int MaxSize = 8 * 1024 * 1024; // 8MB
 
+    private readonly IFileService _fileService;
     private readonly ILog _logger;
     private readonly IMetadataExtractor _metadataExtractor;
     private readonly string _directoryPath;
     private readonly string _fileExtension;
 
-    public FileProcessor(ILog logger, IMetadataExtractor metadataExtractor, string directoryPath, string fileExtension)
+    public FileProcessor(ILog logger, IMetadataExtractor metadataExtractor, IFileService fileService, string directoryPath, string fileExtension)
     {
         _logger = logger;
         _metadataExtractor = metadataExtractor;
+        _fileService = fileService;
         _directoryPath = directoryPath;
         _fileExtension = fileExtension;
     }
 
-    public async Task ProcessFilesAsync()
+    public async Task<bool> ProcessFilesAsync()
     {
-        var files = Directory.GetFiles(_directoryPath, $"*{_fileExtension}");
-        var validFiles = files.Where(file => IsValidSize(file) && IsValidMP3(file)).ToList();
+        var files = _fileService.GetFiles(_directoryPath, $"*{_fileExtension}");
+        if (!files.Any())
+            return false; // No more files to process
 
+        var validFiles = files.Where(file => IsValidSize(file) && IsValidMP3(file)).ToList();
         for (int i = 0; i < validFiles.Count; i += 3)
         {
             var tasks = validFiles.Skip(i).Take(3).Select(file => ProcessFileWithRetryAsync(file));
             await Task.WhenAll(tasks);
         }
+        return true; // Continue processing if needed
     }
 
     private bool IsValidSize(string filePath)
     {
-        var fileInfo = new FileInfo(filePath);
-        if (fileInfo.Length < MinSize || fileInfo.Length > MaxSize)
+        long fileSize = _fileService.GetFileSize(filePath);
+        if (fileSize < MinSize || fileSize > MaxSize)
         {
-            _logger.Log($"File '{filePath}' is invalid due to inappropriate size: {fileInfo.Length} bytes.");
+            _logger.Log($"File '{filePath}' is invalid due to inappropriate size: {fileSize} bytes.");
             return false;
         }
         return true;
@@ -47,31 +48,13 @@ public class FileProcessor : IFileProcessor
 
     private bool IsValidMP3(string filePath)
     {
-        try
+        byte[] buffer = _fileService.ReadFileHeader(filePath, 10);
+        if (buffer[0] == 'I' && buffer[1] == 'D' && buffer[2] == '3' || buffer[0] == 0xFF && (buffer[1] & 0xE0) == 0xE0)
         {
-            using (var fileStream = File.OpenRead(filePath))
-            {
-                byte[] buffer = new byte[10];
-                fileStream.Read(buffer, 0, 10);
-
-                if (buffer[0] == 'I' && buffer[1] == 'D' && buffer[2] == '3')
-                {
-                    return true;
-                }
-                if (buffer[0] == 0xFF && (buffer[1] & 0xE0) == 0xE0)
-                {
-                    return true;
-                }
-
-                _logger.Log($"File '{filePath}' does not contain valid MP3 headers.");
-                return false;
-            }
+            return true;
         }
-        catch (Exception ex)
-        {
-            _logger.Log($"Error reading from MP3 file '{filePath}': {ex.Message}");
-            return false;
-        }
+        _logger.Log($"File '{filePath}' does not contain valid MP3 headers.");
+        return false;
     }
 
     private async Task ProcessFileWithRetryAsync(string filePath)
