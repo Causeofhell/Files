@@ -2,33 +2,27 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-class Program
+// Load configuration
+IConfiguration configuration = Configurator.LoadConfiguration(args);
+
+// Set up dependency injection
+using (var serviceProvider = ServiceConfigurator.ConfigureService(configuration))
 {
-    static void Main(string[] args)
-    {
-        // Load configuration
-        IConfiguration configuration = Configurator.LoadConfiguration(args);
+    // Read settings
+    bool executeImmediately = configuration.GetValue<bool>("SchedulerSettings:ExecuteImmediately");
 
-        // Set up dependency injection
-        using (var serviceProvider = ServiceConfigurator.ConfigureService(configuration))
-        {
-            // Read settings
-            bool executeImmediately = configuration.GetValue<bool>("SchedulerSettings:ExecuteImmediately");
+    // Get the file processor from the service provider
+    var fileProcessor = serviceProvider.GetService<IFileProcessor>();
 
-            // Get the file processor from the service provider
-            var fileProcessor = serviceProvider.GetService<IFileProcessor>();
+    // Create the task scheduler with the configured executeImmediately setting
+    var scheduler = new TaskScheduler(() => fileProcessor.ProcessFilesAsync(), executeImmediately);
 
-            // Create the task scheduler with the configured executeImmediately setting
-            var scheduler = new TaskScheduler(() => fileProcessor.ProcessFilesAsync(), executeImmediately);
+    // Start the scheduler
+    scheduler.Start();
 
-            // Start the scheduler
-            scheduler.Start();
+    Console.WriteLine("Task Scheduler started. Press any key to exit...");
+    Console.ReadKey();
 
-            Console.WriteLine("Task Scheduler started. Press any key to exit...");
-            Console.ReadKey();
-
-            // Stop the scheduler before exiting
-            scheduler.Stop();
-        }
-    }
+    // Stop the scheduler before exiting
+    scheduler.Stop();
 }
