@@ -12,7 +12,7 @@ using (var serviceProvider = ServiceConfigurator.ConfigureService(configuration)
     bool executeImmediately = configuration.GetValue<bool>("SchedulerSettings:ExecuteImmediately");
 
     // Get the file processor from the service provider
-    var fileProcessor = serviceProvider.GetService<IFileProcessor>();
+    var fileProcessor = serviceProvider.GetService<IFileProcessor>()!;
 
     // Create the task scheduler with the configured executeImmediately setting
     var scheduler = new TaskScheduler(() => fileProcessor.ProcessFilesAsync(), executeImmediately);
