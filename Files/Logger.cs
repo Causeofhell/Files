@@ -1,11 +1,12 @@
-﻿using System;
+﻿using Files.Interface;
+using System;
 using System.IO;
 
-public class Logger
+public class Logger : ILog
 {
     private static readonly string logFilePath = "E:\\FilesTest\\log.txt";
 
-    public static void Log(string message)
+    public void Log(string message)
     {
         // Construye el mensaje completo con la fecha y hora.
         string logMessage = $"{DateTime.Now}: {message}";

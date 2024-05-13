@@ -1,23 +1,24 @@
-﻿using System;
-using System.Threading;
-using System.Threading.Tasks;
-
-public class TaskScheduler
+﻿public class TaskScheduler
 {
     private readonly TimeSpan _runTime;
-    private readonly Action _taskToRun;
+    private readonly Func<Task> _taskToRunAsync;  // Changed to Func<Task>
     private CancellationTokenSource _cancellationTokenSource;
 
-    public TaskScheduler(TimeSpan runTime, Action taskToRun)
+    public TaskScheduler(TimeSpan runTime, Func<Task> taskToRunAsync)
     {
         _runTime = runTime;
-        _taskToRun = taskToRun;
+        _taskToRunAsync = taskToRunAsync;
         _cancellationTokenSource = new CancellationTokenSource();
     }
 
     public void Start()
     {
-        Task.Run(async () => await ScheduleTask(_cancellationTokenSource.Token));
+        Task.Run(async () =>
+        {
+            // Execute the task immediately for debugging
+            await _taskToRunAsync();  // Now awaiting the task
+            await ScheduleTask(_cancellationTokenSource.Token);
+        });
     }
 
     public void Stop()
@@ -30,24 +31,17 @@ public class TaskScheduler
         while (!cancellationToken.IsCancellationRequested)
         {
             var now = DateTime.Now;
-            var nextRun = now.Date.Add(_runTime);
-            if (now > nextRun)
-            {
-                nextRun = nextRun.AddDays(1);
-            }
+            var todayMidnight = now.Date.AddDays(1); // Midnight of the next day
+            var delay = todayMidnight - now;
 
-            var delay = nextRun.Subtract(now);
-            if (delay > TimeSpan.Zero)
+            try
             {
-                try
-                {
-                    await Task.Delay(delay, cancellationToken);
-                    _taskToRun.Invoke();
-                }
-                catch (TaskCanceledException)
-                {
-                    return; // Task was canceled
-                }
+                await Task.Delay(delay, cancellationToken);
+                await _taskToRunAsync();  // Now awaiting the task
+            }
+            catch (TaskCanceledException)
+            {
+                return;  // Task was canceled
             }
         }
     }

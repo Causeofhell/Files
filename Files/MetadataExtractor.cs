@@ -1,8 +1,9 @@
-﻿using System.Threading.Tasks;
+﻿using Files.Interface;
+using System.Threading.Tasks;
 
-public class MetadataExtractor
+public class MetadataExtractor : IMetadataExtractor
 {
-    public static async Task<string> ExtractMetadataAsync(string filePath)
+    public async Task<string> ExtractMetadataAsync(string filePath)
     {
         // Simulate metadata extraction
         await Task.Delay(100); // Simulated delay
