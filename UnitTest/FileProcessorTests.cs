@@ -62,4 +62,37 @@ public class FileProcessorTests
         _metadataExtractorMock.Verify(m => m.ExtractMetadataAsync(It.IsAny<string>()), Times.Never);
         _loggerMock.Verify(l => l.Log(It.Is<string>(s => s.Contains("invalid due to inappropriate size"))), Times.AtLeastOnce());
     }
+
+    [Test]
+    public async Task ProcessFileWithRetryAsync_RetryAndSucceedsAfterOneFailure()
+    {
+        // Arrange
+        string filePath = "file1.mp3";
+        var callCount = 0;
+
+        _metadataExtractorMock.Setup(m => m.ExtractMetadataAsync(It.IsAny<string>()))
+            .Returns<string>(s => {
+                callCount++;
+                if (callCount == 1)
+                    throw new Exception("Simulated failure");
+                return Task.FromResult("Metadata");
+            });
+
+        _fileServiceMock.Setup(fs => fs.GetFiles(_directoryPath, "*" + _fileExtension))
+            .Returns(new[] { filePath });
+        _fileServiceMock.Setup(fs => fs.GetFileSize(It.IsAny<string>()))
+            .Returns(1024 * 1024); // 1MB
+        _fileServiceMock.Setup(fs => fs.ReadFileHeader(It.IsAny<string>(), 10))
+            .Returns(new byte[] { 0x49, 0x44, 0x33 }); // ID3 tags
+
+        // Act
+        await _fileProcessor.ProcessFilesAsync();
+
+        // Assert
+        _metadataExtractorMock.Verify(m => m.ExtractMetadataAsync(filePath), Times.Exactly(2));
+        _loggerMock.Verify(l => l.Log(It.Is<string>(s => s.Contains("Processed:"))), Times.Once());
+        _loggerMock.Verify(l => l.Log(It.Is<string>(s => s.Contains("Attempt 1 failed for"))), Times.Once());
+        _loggerMock.Verify(l => l.Log(It.Is<string>(s => s.Contains("Attempt 2 failed for"))), Times.Never());
+        _loggerMock.Verify(l => l.Log(It.Is<string>(s => s.Contains("Failed to process"))), Times.Never());
+    }
 }
